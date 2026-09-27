@@ -1,0 +1,258 @@
+{
+  "name": "1 - Intake and generation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "content-intake",
+        "responseMode": "onReceived"
+      },
+      "id": "20b19a40-5567-4866-9063-f79fd09221fa",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.message.photo || $json.message.video }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "1121adaa-d1e0-4c1a-b574-e4546d46e379",
+      "name": "Has media?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "brief_text",
+              "value": "={{ $json.message.text }}"
+            }
+          ]
+        }
+      },
+      "id": "bdc92efd-3c12-4f2f-aeae-4fd85da02fa7",
+      "name": "Save brief text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: \"meta-llama/llama-4-scout-17b-16e-instruct\", max_tokens: 300, messages: [{role: \"user\", content: [{type: \"image_url\", image_url: {url: $json.media_url}}, {type: \"text\", text: \"Describe only what is literally visible in this image: subject, setting, notable objects, lighting. Do not invent details you cannot see.\"}]}]}) }}"
+      },
+      "id": "d8de9037-d34a-4405-badd-9a53022ff92c",
+      "name": "Vision: describe media (Groq)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        500,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: \"llama-3.3-70b-versatile\", messages: [{role: \"user\", content: \"Extract only the factual highlights from this brief and media description, 3-5 plain sentences, no invented details:\\n\\nBRIEF: \" + $json.brief_text + \"\\n\\nMEDIA: \" + $json.media_description}]}) }}"
+      },
+      "id": "7a532969-c0b1-4e9e-bc69-e005854490fb",
+      "name": "Summarize facts (Groq)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.VOYAGE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: \"voyage-3\", input: [$json.summary]}) }}"
+      },
+      "id": "39ba90e3-7140-4565-b102-c6d7523cb2e7",
+      "name": "Voyage: embed summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/match_posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({query_embedding: $json.embedding, match_count: 3}) }}"
+      },
+      "id": "144cc1c4-dcdc-49a6-acab-fedaac9ab621",
+      "name": "Find similar past posts (RAG)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const platforms = [\n  {platform: 'telegram', tone: 'casual, 150-200 words, 1-2 emoji, end with a question'},\n  {platform: 'vk', tone: 'informative, 250-350 words, 4-6 hashtags at the end'},\n  {platform: 'instagram', tone: 'hook in the first line, 100-150 words, 10-12 hashtags'},\n];\nreturn platforms.map(p => ({ json: { ...$input.item.json, ...p } }));"
+      },
+      "id": "d7533a16-6391-4b9e-a065-97be1124a45a",
+      "name": "Fan out per platform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: \"llama-3.3-70b-versatile\", messages: [{role: \"user\", content: \"Write a social post for \" + $json.platform + \". Tone: \" + $json.tone + \". Use these facts only: \" + $json.summary + \". Match the style of these past examples: \" + JSON.stringify($json.style_examples)}]}) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 9000
+            }
+          }
+        }
+      },
+      "id": "cf2b98cf-5272-4a46-8ef1-132da510d594",
+      "name": "Generate post (Groq, style-matched)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $env.ADMIN_CHAT_ID, text: $json.generated_post, reply_markup: {inline_keyboard: [[{text: 'Approve', callback_data: 'approve:' + $json.post_id}, {text: 'Edit', callback_data: 'edit:' + $json.post_id}, {text: 'Reject', callback_data: 'reject:' + $json.post_id}]]}}) }}"
+      },
+      "id": "82dd7d92-4527-4efb-b2b7-a218eaebfa44",
+      "name": "Send draft for approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Has media?": {
+      "main": [
+        [
+          {
+            "node": "Vision: describe media (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save brief text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "5b2df90c-3593-48bf-a3bd-68eb2c30e855",
+  "meta": {
+    "instanceId": "demo"
+  },
+  "tags": []
+}

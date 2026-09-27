@@ -1,0 +1,285 @@
+{
+  "name": "3 - Scheduled publish",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "d397e492-72e8-41f0-8bf5-25ed108aff59",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?status=eq.approved",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "15cbe848-78d9-4938-b15c-bb76f7228687",
+      "name": "Fetch approved posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.platform }}",
+              "value2": "telegram"
+            }
+          ]
+        }
+      },
+      "id": "e509c522-f8c2-4138-9c75-dfbb5671f0a3",
+      "name": "platform == telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $env.CHANNEL_ID, text: $json.generated_post}) }}"
+      },
+      "id": "d2a9d17b-ef66-43ec-b995-4f115251a151",
+      "name": "Publish: Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vk.com/method/wall.post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({message: $json.generated_post, access_token: $env.VK_TOKEN}) }}"
+      },
+      "id": "f4d45eb1-8ebf-4730-9943-b4e527c400f6",
+      "name": "Publish: VK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?platform=eq.instagram&published_at=gte.today"
+      },
+      "id": "5e3cbd84-1d82-4ede-b587-b0a57b52d6e7",
+      "name": "Check daily limit: Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/{{ $env.IG_USER_ID }}/media_publish",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({creation_id: $json.creation_id, access_token: $env.IG_TOKEN}) }}"
+      },
+      "id": "639a5268-f47f-4bf0-b66f-a8542ca1d734",
+      "name": "Publish: Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?id=eq.{{ $json.post_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({status: 'published'}) }}"
+      },
+      "id": "17e1ad6e-2b0d-4436-a546-92cfea3fdec8",
+      "name": "Mark published (PATCH)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: 'voyage-3', input: [$json.generated_post]}) }}"
+      },
+      "id": "8565016c-26fb-4edf-a9a0-d6f8d8e37c74",
+      "name": "Compute embedding for published post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?id=eq.{{ $json.post_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({embedding: $json.embedding}) }}"
+      },
+      "id": "458221ae-0f28-4b66-97de-6f6eb0285570",
+      "name": "Store embedding (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1750,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "platform == telegram?": {
+      "main": [
+        [
+          {
+            "node": "Publish: Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Publish: VK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check daily limit: Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish: Telegram": {
+      "main": [
+        [
+          {
+            "node": "Mark published (PATCH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish: VK": {
+      "main": [
+        [
+          {
+            "node": "Mark published (PATCH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check daily limit: Instagram": {
+      "main": [
+        [
+          {
+            "node": "Publish: Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish: Instagram": {
+      "main": [
+        [
+          {
+            "node": "Mark published (PATCH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark published (PATCH)": {
+      "main": [
+        [
+          {
+            "node": "Compute embedding for published post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute embedding for published post": {
+      "main": [
+        [
+          {
+            "node": "Store embedding (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "c3263e8e-21e4-4055-a95b-8ad6bddb8c03",
+  "meta": {
+    "instanceId": "demo"
+  },
+  "tags": []
+}

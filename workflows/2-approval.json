@@ -1,0 +1,128 @@
+{
+  "name": "2 - Approval",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "content-approval",
+        "responseMode": "onReceived"
+      },
+      "id": "767940b5-3ada-4a48-a3c2-70766119bf95",
+      "name": "Approval Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "={{ $json.callback_query.data.split(':')[0] }}"
+            },
+            {
+              "name": "post_id",
+              "value": "={{ $json.callback_query.data.split(':')[1] }}"
+            }
+          ]
+        }
+      },
+      "id": "6ca4f382-633f-498c-b0c7-6c5ad7f20243",
+      "name": "Parse callback_data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "value2": "approve"
+            }
+          ]
+        }
+      },
+      "id": "409f9ce4-e2e0-4f28-830b-2f59e1bf267d",
+      "name": "action == approve?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?id=eq.{{ $json.post_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({status: 'approved'}) }}"
+      },
+      "id": "d4c41423-18d0-4ea0-b786-4dcdb37b4bb4",
+      "name": "Mark approved (PATCH)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/posts?id=eq.{{ $json.post_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({status: 'rejected'}) }}"
+      },
+      "id": "02891021-bce5-4730-b501-e36e2cb9956b",
+      "name": "Mark rejected (PATCH)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        750,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "action == approve?": {
+      "main": [
+        [
+          {
+            "node": "Mark approved (PATCH)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark rejected (PATCH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "67fac213-5124-4a6e-9d0e-ed8158dcb0cb",
+  "meta": {
+    "instanceId": "demo"
+  },
+  "tags": []
+}
